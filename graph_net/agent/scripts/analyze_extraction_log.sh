@@ -75,9 +75,14 @@ echo ""
 
 # 1. 总体统计
 echo "--- 一、总体统计 ---"
-TOTAL=$(grep -cE "Starting extraction for|Successfully extracted|Extraction failed for" "$LOG_FILE" 2>/dev/null || echo 0)
-SUCCESS=$(grep -c "Successfully extracted" "$LOG_FILE" 2>/dev/null || echo 0)
-FAILED=$(grep -c "Extraction failed for" "$LOG_FILE" 2>/dev/null || echo 0)
+# 使用日志中实际的标记格式统计：
+# 成功: [CPU X] OK model_name 或 [GPU X] OK model_name
+# 失败: [CPU X] FAIL model_name 或 [GPU X] FAIL model_name
+# 注：同时支持 CPU-only 模式和 GPU 模式的日志
+# 部分日志含二进制数据，用 grep -a 强制按文本处理
+TOTAL=$(grep -ac "Starting extraction for model:" "$LOG_FILE" 2>/dev/null || echo 0)
+SUCCESS=$(grep -aoE '\[(CPU|GPU) [0-9]+\] OK [^ ]+' "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')
+FAILED=$(grep -aoE '\[(CPU|GPU) [0-9]+\] FAIL [^ ]+' "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')
 PROGRESS_LINES=$(grep -c "PROGRESS" "$LOG_FILE" 2>/dev/null || echo 0)
 
 echo "总尝试数: $TOTAL"
@@ -90,16 +95,44 @@ echo "PROGRESS 行数: $PROGRESS_LINES"
 echo ""
 
 # 2. 失败原因一级分布
+# 注意：不同错误类型在日志中的格式不同
+# - Script execution failed / Failed to analyze model: "Extraction failed for ...: $reason"
+# - Failed to download / 401: "Unexpected error for ...: $reason"
+# - timeout: 可能出现在两种格式中
 echo "--- 二、失败原因一级分布 ---"
 echo "类型 | 数量"
 echo "---|---"
-for reason in "Script execution failed" "Failed to analyze model" "Failed to download" "Sample verification failed" "timeout" "401" "ducc"; do
-    count=$(grep -c "Extraction failed for.*$reason" "$LOG_FILE" 2>/dev/null || echo 0)
-    count=$(echo "$count" | tr -d '\n')
-    if [ "$count" -gt 0 ]; then
-        echo "$reason | $count"
-    fi
-done
+
+# Script execution failed
+scount=$(grep -c "Extraction failed for.*Script execution failed" "$LOG_FILE" 2>/dev/null || echo 0)
+scount=$(echo "$scount" | tr -d '\n')
+if [ "$scount" -gt 0 ]; then echo "Script execution failed | $scount"; fi
+
+# Failed to analyze model (包含 Model too large / Unsupported model_type)
+acount=$(grep -c "Extraction failed for.*Failed to analyze model" "$LOG_FILE" 2>/dev/null || echo 0)
+acount=$(echo "$acount" | tr -d '\n')
+if [ "$acount" -gt 0 ]; then echo "Failed to analyze model | $acount"; fi
+
+# Download failure（包括超时、404、403、401 等）
+dcount=$(grep -c "Unexpected error for.*Failed to download" "$LOG_FILE" 2>/dev/null || echo 0)
+dcount=$(echo "$dcount" | tr -d '\n')
+if [ "$dcount" -gt 0 ]; then echo "Failed to download | $dcount"; fi
+
+# Sample verification failed
+vcount=$(grep -c "Extraction failed for.*Sample verification failed" "$LOG_FILE" 2>/dev/null || echo 0)
+vcount=$(echo "$vcount" | tr -d '\n')
+if [ "$vcount" -gt 0 ]; then echo "Sample verification failed | $vcount"; fi
+
+# 401（未授权 / 私有模型）
+# 401 可能在 download 失败中，也可能单独出现
+count401=$(grep -c "401 Client Error" "$LOG_FILE" 2>/dev/null || echo 0)
+count401=$(echo "$count401" | tr -d '\n')
+if [ "$count401" -gt 0 ]; then echo "401 Unauthorized | $count401"; fi
+
+# ducc
+ducccount=$(grep -c "ducc -p" "$LOG_FILE" 2>/dev/null || echo 0)
+ducccount=$(echo "$ducccount" | tr -d '\n')
+if [ "$ducccount" -gt 0 ]; then echo "ducc retry | $ducccount"; fi
 echo ""
 
 # 3. Failed to analyze model 细分
@@ -184,8 +217,8 @@ SUCCESS_LIST="/tmp/${BASE_NAME}_success.txt"
 grep "Starting extraction for model:" "$LOG_FILE" 2>/dev/null | \
     sed 's/.*Starting extraction for model: //' > "$PROCESSED"
 
-grep "Successfully extracted sample for" "$LOG_FILE" 2>/dev/null | \
-    sed 's/.*Successfully extracted sample for //' | sort -u > "$SUCCESS_LIST"
+grep -aoE '\[(CPU|GPU) [0-9]+\] OK [^ ]+' "$LOG_FILE" 2>/dev/null | \
+    awk '{print $NF}' | sort -u > "$SUCCESS_LIST"
 
 echo "已处理模型列表: $PROCESSED ($(wc -l < "$PROCESSED" 2>/dev/null || echo 0) 个)"
 echo "成功模型列表:   $SUCCESS_LIST ($(wc -l < "$SUCCESS_LIST" 2>/dev/null || echo 0) 个)"
