@@ -100,7 +100,23 @@ bash graph_net/agent/scripts/analyze_extraction_log.sh $HOME/workspace/logs_and_
 
 输出包括：总体统计（成功率）、失败原因一级分布、模型过大分布、异常类型分布（ValueError/Dynamo/IndexError 等）、HTTP 状态码分布、辅助文件（生成已处理和成功模型列表到 `/tmp/`）。
 
-**环境变量**：两个脚本默认使用 `$HOME/workspace/` 下的目录，可通过环境变量覆盖：
+### gen_hash_and_dedup.py
+
+子图去重脚本。遍历抽取结果目录，为每个子图的 `model.py` 生成 SHA256 哈希，找出内容完全相同的子图并生成去重报告，支持一键删除重复目录。
+
+```bash
+# 仅分析，不删除
+python graph_net/agent/scripts/gen_hash_and_dedup.py ./success_20260515_merged
+
+# 分析并直接删除重复目录（保留每组第一个）
+python graph_net/agent/scripts/gen_hash_and_dedup.py ./success_20260515_merged --remove
+```
+
+输出包括：生成的 `graph_hash.txt` 数量、唯一子图数、重复组数、可删除数量，以及详细的去重报告 `dedup_report.txt`。
+
+> **为什么去重率高**：同一基础模型的微调变体（fine-tune variants）通常共享完全相同的计算图，只是权重不同。实测可缩减 90%+（85K 子图 → 1.5K 唯一子图，2.3 GB → 172 MB）。
+
+**环境变量**：以上脚本默认使用 `$HOME/workspace/` 下的目录，可通过环境变量覆盖：
 
 ```bash
 export GRAPHNET_LOG_DIR=/your/path/logs_and_lists
