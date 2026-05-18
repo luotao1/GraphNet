@@ -71,3 +71,39 @@ pytest graph_net/agent/tests/ -v
 # 运行实际模型测试（需要设置环境变量）
 TEST_REAL_RUN=1 pytest graph_net/agent/tests/test_real_run.py -v
 ```
+
+## 辅助脚本
+
+`graph_net/agent/scripts/` 目录下提供批量任务相关的辅助脚本：
+
+### check_extraction_progress.sh
+
+一键查看当前抽取任务的运行状态。
+
+```bash
+# 自动查找最新日志
+bash graph_net/agent/scripts/check_extraction_progress.sh
+
+# 或指定日志文件
+bash graph_net/agent/scripts/check_extraction_progress.sh $HOME/workspace/logs_and_lists/batch7_safe_run.log
+```
+
+输出包括：进程状态（PID、CPU/内存、Worker 数）、日志最新进度、成功/失败统计、处理速度估算、预计剩余时间、磁盘空间、样本目录文件数。
+
+### analyze_extraction_log.sh
+
+分析已完成批次的抽取日志，输出失败分布和根因统计。
+
+```bash
+bash graph_net/agent/scripts/analyze_extraction_log.sh $HOME/workspace/logs_and_lists/batch7_safe_run.log
+```
+
+输出包括：总体统计（成功率）、失败原因一级分布、模型过大分布、异常类型分布（ValueError/Dynamo/IndexError 等）、HTTP 状态码分布、辅助文件（生成已处理和成功模型列表到 `/tmp/`）。
+
+**环境变量**：两个脚本默认使用 `$HOME/workspace/` 下的目录，可通过环境变量覆盖：
+
+```bash
+export GRAPHNET_LOG_DIR=/your/path/logs_and_lists
+export GRAPHNET_SUCCESS_DIR=/your/path/success
+export GRAPHNET_SAMPLES_DIR=/your/path/samples
+```
